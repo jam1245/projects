@@ -1,0 +1,929 @@
+---
+title: "comments"
+author: "John"
+date: "11/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr) # for data wrangling
+library(tidytext) # for NLP
+library(stringr) # to deal with strings
+library(wordcloud) # to render wordclouds
+library(knitr) # for tables
+#library(DT) # for dynamic tables
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+library(widyr)
+library(ggplot2)
+library(igraph)
+library(ggraph)
+set.seed(1245)
+
+library(readxl)
+df <- read_excel("C:/Users/e394102/OneDrive/Data/RMS_deid_engagement2019.xlsx")
+head(df)
+
+```
+
+```{r}
+
+
+rms <- df %>% 
+  filter(LMP_BA_NAME == 'Rotary and Mission Systems')
+
+
+tidy_text <- rms %>% 
+  unnest_tokens(word, 'Insights Comment') 
+
+
+# how many comments 
+NAs <- sum(is.na(rms$`Insights Comment`))
+rows <- nrow(rms)
+
+# how many comments 
+rows - NAs 
+
+
+data("stop_words")
+
+tidy <- tidy_text %>% anti_join(stop_words)
+
+tidy %>% count(word, sort = TRUE) %>% drop_na()
+
+```
+
+```{r}
+
+# remove unique stop words that snuck in there
+uni_sw <- data.frame(word = c("lockheed","martin", "lm", "rms"))
+
+tokens_clean <- tidy %>% 
+  anti_join(uni_sw, by = "word") %>% 
+  count(word, sort = TRUE) %>% drop_na()
+
+
+
+
+# define a nice color palette
+pal <- brewer.pal(8,"Dark2")
+
+# plot the 50 most common words
+tokens_clean %>% 
+  with(wordcloud(word, n, random.order = FALSE, max.words = 50, colors=pal))
+
+
+```
+
+```{r}
+
+bigrams <- rms %>% 
+  unnest_tokens(bigram, 'Insights Comment', token = 'ngrams', n = 2) 
+
+#write.csv(bigrams, file = "engagement_bigrams2019.csv")
+
+```
+
+
+```{r}
+
+
+bigrams %>% count(bigram, sort = TRUE)
+
+bigrams_sep <- bigrams %>% separate(bigram, c("word1", "word2"), sep = " ")
+
+
+bigrams_filtered <- bigrams_sep %>% 
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+
+bigram_counts <- bigrams_filtered%>% 
+  count(word1, word2, sort = TRUE)
+
+
+bigrams_united <- bigrams_filtered %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+
+bi <- data.frame(word = c("lockheed","martin", "lm", "rms", "NA NA"))
+
+
+bigrams_united %>%   
+  #filter(Index_Engagement > 0.5) %>% 
+  count(bigram, sort = TRUE) %>%
+  filter(n > 20) %>%
+  drop_na() %>%
+  filter(bigram != "NA NA" & bigram != "lockheed martin" & 
+           bigram != "lm rms" & 
+           bigram != "9 80"& 
+           bigram != "martin rms" & 
+           bigram != "brak klimatyzacji") %>%
+  mutate(word = reorder(bigram, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+ # facet_wrap(~LMP_TTOC_DESCR) + 
+  theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Bigrams on Leadership and Management are Most Frequent",
+                subtitle = "Most Frequenty Bigrams Used in RMS Engagement Survey",
+                caption = "Source: RMS/ITM")
+
+
+################
+
+bigram_tf_idf <- bigrams_united %>%
+  count(book, bigram) %>%
+  bind_tf_idf(bigram, book, n) %>%
+  arrange(desc(tf_idf))
+
+bigram_tf_idf
+#### 
+
+
+
+data("stop_words")
+# remove unique stop words that snuck in there
+uni_sw <- data.frame(word = c("lockheed","martin", "lm", "rms"))
+
+tidy_text <- rms %>% 
+  unnest_tokens(word, 'Insights Comment') %>% 
+  anti_join(stop_words) %>% 
+  anti_join(uni_sw, by = "word")
+
+
+
+word_pairs <- tidy_text %>% pairwise_count(word, EncryptedEMPLID, sort = TRUE, upper = FALSE)
+
+
+
+word_pairs %>% filter(n >80) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_color = "cyan4") +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE, point.padding = unit(0.2, "lines")) +
+  theme_void()
+  
+
+NA_text <- data.frame(bigram = c("NA NA", "lockheed martin"))
+
+
+
+test <- bigrams_filtered %>% 
+  unite(bigram, word1, word2, sep = " ") %>% 
+  group_by(LMP_TTOC_DESCR, bigram) %>%  
+  count(bigram, sort = TRUE) %>% #filter(bigram != "NA NA")
+  anti_join(NA_text, by = "bigram") %>% 
+  filter(n > 8) %>% 
+  top_n(10, n) %>% 
+  ggplot(aes(bigram, n)) + 
+  geom_col()+
+  #geom_col(show.legend = FALSE) +
+  #labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~LMP_TTOC_DESCR, ncol = 2, scales = "free") +
+  coord_flip()
+  
+
+```
+
+```{r}
+library(textdata)
+get_sentiments("afinn")
+
+sentiment_messages <- tidy_text %>% 
+  inner_join(get_sentiments("afinn"), by = "word") %>% 
+  group_by(LMP_TTOC_DESCR, Survey_Instance_ID) %>% 
+  summarize(sentiment = mean(value), words = n()) %>%
+  ungroup() %>%
+  filter(words >= 5)
+
+## what are the most positive messages
+sentiment_messages %>% arrange(desc(sentiment))
+
+
+## what are the most negative messages
+sentiment_messages %>% arrange(sentiment)
+
+print_message <- function(group, id) {
+  result <- df %>% 
+    filter(LMP_TTOC_DESCR == group, id == Survey_Instance_ID, 'Insights Comment' != "")
+  cat(result$'Insights Comment', sep = "\n")
+}
+
+print_message("ET-Engineering & Technology", 6423324)
+
+## look at the most positive comment
+print_message("ET-Engineering & Technology", 6423324)
+
+
+## look at the most negative comment
+print_message("BP-Business Performance", 6466238)
+
+```
+
+
+
+```{r}
+
+tidy_text <- rms %>% 
+  unnest_tokens(word, 'Insights Comment') 
+
+
+data(stop_words)
+
+tidy_text <- tidy_text %>%
+  anti_join(stop_words)
+
+
+uni_sw <- data.frame(word = c("lockheed","martin", "lm", "rms"))
+
+
+tidy_text %>%   
+  #filter(Index_Engagement > 0.5) %>% 
+  count(word, sort = TRUE) %>%
+  filter(n > 250) %>%
+  drop_na() %>%
+  anti_join(uni_sw, by = "word") %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "",
+                subtitle = "Most Frequenty Words Used in RMS Engagement Survey",
+                caption = "Source: RMS/ITM")
+
+
+
+tidy_text %>%   
+  filter(Index_Engagement < 0.2) %>% 
+  count(word, sort = TRUE) %>%
+  filter(n > 20) %>%
+  drop_na() %>%
+  anti_join(uni_sw, by = "word") %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+
+bing_word_counts <- tidy_text %>%
+  filter(Index_Engagement < 0.3) %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment",
+       x = NULL) +
+  coord_flip()
+
+```
+
+
+```{r}
+
+ggplot(rms) + geom_density(aes(x = Index_Engagement)) + facet_wrap(~RMS_ALT_DEPT_NAME)
+
+
+ggplot(rms) + geom_density(aes(x = Index_Engagement)) + facet_wrap(~LMP_OC_DESCR)
+
+engage <- ggplot(rms) + geom_density(aes(x = Index_Engagement)) + 
+  facet_wrap(~LMP_TTOC_DESCR) + 
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Engagement Index",
+                subtitle = "Density Plots",
+                caption = "Source: RMS/ITM")
+
+engage
+
+
+growth <- ggplot(rms) + geom_density(aes(x = Index_CareerGrowth)) + 
+  facet_wrap(~LMP_TTOC_DESCR) + 
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Career Growth Index",
+                subtitle = "Density Plots",
+                caption = "Source: RMS/ITM")
+
+growth
+
+
+
+feedback <- ggplot(rms) + geom_density(aes(x = Index_Feedback)) + 
+  facet_wrap(~LMP_TTOC_DESCR) + 
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Feedback  Index",
+                subtitle = "Density Plots",
+                caption = "Source: RMS/ITM")
+
+feedback
+
+
+
+
+inclusion <- ggplot(rms) + geom_density(aes(x = Index_Inclusion)) + 
+  facet_wrap(~LMP_TTOC_DESCR) + 
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Inclusion  Index",
+                subtitle = "Density Plots",
+                caption = "Source: RMS/ITM")
+
+inclusion
+
+```
+```{r}
+tidy
+
+
+### Look at ALt Dept 
+words_by_alt_dept <- tidy %>%
+  count(ALT_DEPT_DESCR, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_alt_dept <- words_by_alt_dept %>% drop_na()
+
+
+top_words <- words_by_alt_dept %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  mutate(contribution = sum(value * n) / sum(n))
+
+
+
+
+words_by_alt_dept <- words_by_alt_dept %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(ALT_DEPT_DESCR) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_alt_dept %>%
+  mutate(group = reorder(ALT_DEPT_DESCR, value)) %>%
+  ggplot(aes(group, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value")
+
+
+
+### Look at Job Description
+words_by_job <- tidy %>%
+  count(JOB_FUNCT_DESCR_LM, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_job <- words_by_job %>% drop_na()
+
+
+words_by_job <- words_by_job %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(JOB_FUNCT_DESCR_LM) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_job %>%
+  mutate(job_function = reorder(JOB_FUNCT_DESCR_LM, value)) %>%
+  ggplot(aes(job_function, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") + facet_grid(~job_function)
+
+
+### Look at work location 
+words_by_level <- tidy %>%
+  count(level_number, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_level <- words_by_level %>% drop_na()
+
+
+words_by_level <- words_by_level %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(level_number) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_level %>%
+  mutate(job_level = reorder(level_number, value)) %>%
+  ggplot(aes(job_level, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value")
+
+
+
+
+
+
+
+### Look at zt5
+words_by_zt5 <- tidy %>%
+  count(ZT5, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_zt5 <- words_by_zt5 %>% drop_na()
+
+
+words_by_zt5 <- words_by_zt5 %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(ZT5) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_zt5 %>%
+  mutate(job_zt5 = reorder(ZT5, value)) %>%
+  ggplot(aes(job_zt5, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+
+
+### Look at age
+words_by_zt5 <- tidy %>%
+  count(AGEGROUP, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_zt5 <- words_by_zt5 %>% drop_na()
+
+
+words_by_zt5 <- words_by_zt5 %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(AGEGROUP) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_zt5 %>%
+  mutate(job_zt5 = reorder(AGEGROUP, value)) %>%
+  ggplot(aes(job_zt5, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+### Look at leaderflag
+words_by_leader <- tidy %>%
+  count(LEADERFLAG, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_leader <- words_by_leader %>% drop_na()
+
+
+words_by_leader <- words_by_leader %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(LEADERFLAG) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_leader %>%
+  mutate(job_leader = reorder(LEADERFLAG, value)) %>%
+  ggplot(aes(job_leader, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+
+### Look at subfunction
+words_by_leader <- tidy %>%
+  count(LMP_SUB_FUNCTN_IND_DESCR, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_leader <- words_by_leader %>% drop_na()
+
+
+words_by_leader <- words_by_leader %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(LMP_SUB_FUNCTN_IND_DESCR) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_leader %>%
+  mutate(job_leader = reorder(LMP_SUB_FUNCTN_IND_DESCR, value)) %>%
+  ggplot(aes(job_leader, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+
+
+### Look at top tier oc
+words_by_ttoc <- tidy %>%
+  count(LMP_TTOC_DESCR, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_ttoc <- words_by_ttoc %>% drop_na()
+
+
+words_by_ttoc <- words_by_ttoc %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(LMP_TTOC_DESCR) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_ttoc %>%
+  mutate(TTOC = reorder(LMP_TTOC_DESCR, value)) %>%
+  ggplot(aes(TTOC, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Top Tier Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+
+### Look at poc
+words_by_minority <- tidy %>%
+  count(MINNONMIN, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_minority <- words_by_minority %>% drop_na()
+
+
+words_by_minority <- words_by_minority %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(MINNONMIN) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_minority %>%
+  mutate(TTOC = reorder(MINNONMIN, value)) %>%
+  ggplot(aes(TTOC, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Minority vs. Non-Minority",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+
+
+### Look at LOB
+words_by_lob <- tidy %>%
+  count(LMP_OC_DESCR, word, sort = TRUE) %>%
+  ungroup()
+
+words_by_lob <- words_by_lob %>% drop_na()
+
+
+words_by_lob <- words_by_lob %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(LMP_OC_DESCR) %>%
+  summarize(value = sum(value * n) / sum(n))
+
+words_by_lob %>%
+  mutate(job_oc = reorder(LMP_OC_DESCR, value)) %>% filter(value > 0.5 | value < 0) %>%
+  ggplot(aes(job_oc, value, fill = value > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment value") +
+    theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avg. Sentiment by Operating Component",
+                subtitle = "Sentiment Analysis Using AFINN Lexicon",
+                caption = "Source: RMS/ITM")
+
+PWDFLAG
+
+level_number
+
+GENERATION
+AGEGROUP
+
+LMP_OC_DESCR
+BUS_UNIT_DESCR_LM
+ALT_DEPT_DESCR_SHORT
+
+
+LEADERFLAG
+
+ZT5
+
+```
+
+```{r}
+contributions <- tidy %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(word) %>%
+  summarize(occurences = n(),
+            contribution = sum(value))
+
+contributions
+
+contributions %>%
+  top_n(25, abs(contribution)) %>%
+  mutate(word = reorder(word, contribution)) %>%
+  ggplot(aes(word, contribution, fill = contribution > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip()
+
+```
+
+
+
+
+### words with negation 
+```{r}
+usenet_bigram_counts <- bigram %>%
+  count(newsgroup, bigram, sort = TRUE) %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+
+negate_words <- c("not", "without", "no", "can't", "don't", "won't")
+
+usenet_bigram_counts %>%
+  filter(word1 %in% negate_words) %>%
+  count(word1, word2, wt = n, sort = TRUE) %>%
+  inner_join(get_sentiments("afinn"), by = c(word2 = "word")) %>%
+  mutate(contribution = value * n) %>%
+  group_by(word1) %>%
+  top_n(10, abs(contribution)) %>%
+  ungroup() %>%
+  mutate(word2 = reorder(paste(word2, word1, sep = "__"), contribution)) %>%
+  ggplot(aes(word2, contribution, fill = contribution > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ word1, scales = "free", nrow = 3) +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  xlab("Words preceded by a negation") +
+  ylab("Sentiment value * # of occurrences") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  coord_flip()
+```
+
+
+
+
+
+```{r}
+
+
+
+
+frequency <- tidy %>% 
+  #filter(WORK_LOCATION_COUNTRY_CD == "US") %>% 
+  #filter(EMPL_CLAS_DESCR_LM != "Local Country National") %>%
+  filter(Language == "English") %>%
+  filter(JOB_FAMILY_DESC_LM == "Technicians" | JOB_FAMILY_DESC_LM == "Non-Technical") %>% 
+  group_by(JOB_FAMILY_DESC_LM) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(tidy %>% 
+              group_by(JOB_FAMILY_DESC_LM) %>% 
+              summarise(total = n())) %>% 
+  mutate(freq = n/total)
+
+
+frequency$JOB_FAMILY_DESC_LM <- gsub("Non-Technical","NonTechnical", frequency$JOB_FAMILY_DESC_LM)
+
+frequency_spread <- frequency %>%
+  select(JOB_FAMILY_DESC_LM, word, freq) %>% 
+  spread(JOB_FAMILY_DESC_LM, freq) %>%
+  arrange(Technicians, NonTechnical)
+
+
+#library(scales)
+#library(dplyr)
+#library(ggplot2)
+#library(ggthemes)
+
+frequency_spread %>% 
+  filter(word != "1000" & word != "18" & word != "2013" & word != "500" & word != "lm" & word != "na" &
+          word != "1" & word != "13" & word != "100" & word != "martin" & word != "jest" & word != "tym" ) %>%
+  ggplot(aes(Technicians, NonTechnical)) +
+  geom_jitter(alpha = 0.1, size =2.5, width = 0.20, height = 0.20) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = scales::percent_format())+
+  scale_y_log10(labels = scales::percent_format())+
+  geom_abline(color = "red") +
+  #theme_fivethirtyeight() +
+  #  theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    labs(title = "Comparing Frequencies of Words Among Technical and Non Technical Employees",
+                subtitle = "",
+                caption = "Source: RMS/ITM")
+
+
+
+##########################LDP 
+
+frequency <- tidy %>% 
+  filter(WORK_LOCATION_COUNTRY_CD == "US") %>% 
+  filter(EMPL_CLAS_DESCR_LM != "Local Country National") %>%
+  filter(FLSA_STATUS != "E") %>%
+  group_by(ZT5GRP) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(tidy %>% 
+              group_by(ZT5GRP) %>% 
+              summarise(total = n())) %>% 
+  mutate(freq = n/total)
+
+
+frequency$ZT5GRP <- gsub("6 plus Years of Service","ZT5", frequency$ZT5GRP)
+frequency$ZT5GRP <- gsub("0 - <6 Years of Service","NonZT5", frequency$ZT5GRP)
+
+
+frequency_spread <- frequency %>%
+  select(ZT5GRP, word, freq) %>% 
+  spread(ZT5GRP, freq) %>%
+  arrange(ZT5, NonZT5)
+
+
+#library(scales)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+
+frequency_spread %>% 
+  filter(word != "1000" & word != "18" & word != "2013" & word != "500" & word != "lm" & word != "no" &
+          word != "1" & word != "13" & word != "100" & word != "martin" & word != "jest" & word != "tym" ) %>%
+  ggplot(aes(ZT5, NonZT5)) +
+  geom_jitter(alpha = 0.1, size =2.5, width = 0.20, height = 0.20) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = scales::percent_format())+
+  scale_y_log10(labels = scales::percent_format())+
+  geom_abline(color = "red") +
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Comparing Frequencies of Words Among Technical and Non Technical Employees",
+                subtitle = "",
+                caption = "Source: RMS/ITM")
+
+
+
+
+##########################LDP 
+
+frequency <- tidy %>% 
+  #filter(WORK_LOCATION_COUNTRY_CD == "US") %>% 
+  #filter(EMPL_CLAS_DESCR_LM != "Local Country National") %>%
+  filter(ETHNICGROUP == "Black or Afr/Am" & ETHNICGROUP == "White") %>%
+  #filter(FLSA_STATUS != "E") %>%
+  group_by(ETHNICGROUP) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(tidy %>% 
+              group_by(ETHNICGROUP) %>% 
+              summarise(total = n())) %>% 
+  mutate(freq = n/total)
+
+
+frequency$ETHNICGROUP <- gsub("Black or Afr/Am","POC", frequency$ETHNICGROUP)
+
+
+
+frequency_spread <- frequency %>%
+  select(ETHNICGROUP, word, freq) %>% 
+  spread(ETHNICGROUP, freq) %>%
+  arrange(POC, White)
+
+
+
+
+frequency_spread %>% 
+  filter(word != "1000" & word != "18" & word != "2013" & word != "500" & word != "lm" & word != "no" &
+          word != "1" & word != "13" & word != "100" & word != "martin" & word != "jest" & word != "tym" ) %>%
+  ggplot(aes(POC, White)) +
+  geom_jitter(alpha = 0.1, size =2.5, width = 0.20, height = 0.20) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = scales::percent_format())+
+  scale_y_log10(labels = scales::percent_format())+
+  geom_abline(color = "red") +
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Comparing Frequencies of Words Among Technical and Non Technical Employees",
+                subtitle = "",
+                caption = "Source: RMS/ITM")
+
+
+
+###################################################
+frequency <- tidy %>% 
+  filter(WORK_LOCATION_COUNTRY_CD == "US") %>% 
+  filter(EMPL_CLAS_DESCR_LM != "Local Country National") %>%
+  filter(FLSA_STATUS != "E") %>%
+  filter(GENDER == "Male" | GENDER == "Female") %>%
+  group_by(GENDER) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(tidy %>% 
+              group_by(GENDER) %>% 
+              summarise(total = n())) %>% 
+  mutate(freq = n/total)
+
+
+
+
+
+frequency_spread <- frequency %>%
+  select(GENDER, word, freq) %>% 
+  spread(GENDER, freq) %>%
+  arrange(Female, Male)
+
+
+
+
+frequency_spread %>% 
+  filter(word != "1000" & word != "18" & word != "2013" & word != "500" & word != "lm" & word != "no" &
+          word != "1" & word != "13" & word != "100" & word != "martin" & word != "jest" & word != "tym" ) %>%
+  ggplot(aes(Male, Female)) +
+  geom_jitter(alpha = 0.1, size =2.5, width = 0.20, height = 0.20) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = scales::percent_format())+
+  scale_y_log10(labels = scales::percent_format())+
+  geom_abline(color = "red") +
+  theme_fivethirtyeight() +
+      #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =12), axis.text = element_text(size =7)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Comparing Frequencies of Words Among Technical and Non Technical Employees",
+                subtitle = "",
+                caption = "Source: RMS/ITM")
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

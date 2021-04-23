@@ -1,0 +1,1232 @@
+---
+title: "zero_to_three"
+author: "John"
+date: "10/10/2019"
+output: html_document
+---
+
+
+```{r}
+
+library(tidyverse)
+library(readr)
+library(forecast)
+library(readxl)
+library(lubridate)
+library(tidyr)
+library(networkD3)
+library(igraph)
+library(ggthemes)
+
+z3 <- read_excel("C:/Users/e394102/OneDrive/Data/3yrs_less_dataset_version1.xlsx")
+glimpse(z3)
+
+# remove spaces and garbage in the column names
+names(z3) <- make.names(names(z3),unique = TRUE)
+
+
+avg_tenure_profiles <- read_excel("C:/Users/e394102/OneDrive/Data/avg_tenure_profiles.xlsx")
+head(avg_tenure_profiles)
+
+
+```
+
+```{r}
+
+p1 <- avg_tenure_profiles %>%
+    ggplot(aes(x=Level,y=AvgTenure)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    theme(axis.title = element_text(), axis.title.y = element_blank()) + ylab("Avg. Yrs of Service") +
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Avgerage Years of service Generally Increases by Level",
+                subtitle = "Average Years of Service by Job Discipline and Level",
+                caption = "Source: RMS")
+
+p1 + facet_wrap(~ JobDiscipline, ncol=2, scales="free_y") 
+
+
+```
+
+
+
+
+
+```{r}
+
+
+z3 %>% group_by(Previous.Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% View()
+
+
+p0 <- z3 %>% 
+# looks at the entire dataset 
+    group_by(ID, RecordType) %>%  dplyr::summarize(Samples = n()) %>%
+    ggplot(aes(x=RecordType,y=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Record Types Include Internal Transfer Ins and Terminations",
+                subtitle = "Movement w/in First Three Years by Record Type at RMS",
+                caption = "Source: RMS October 2019")
+
+
+p0 <- z3 %>% 
+# looks at the entire dataset 
+    group_by(ID, RecordType, Previous.Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>%
+    ggplot(aes(x=RecordType,y=Samples, fill = Previous.Discipline.Descr)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Record Types Include Internal Transfer Ins and Terminations",
+                subtitle = "Movement w/in First Three Years by Record Type at RMS",
+                caption = "Source: RMS October 2019")
+
+### look at all the dataset - just voluntary resignation 
+
+library(RColorBrewer)
+
+p1 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(LevelName == "Level 3" | LevelName == "Level 4"| LevelName == "Level 1"| LevelName == "Level 2") %>% 
+    mutate(Legend = ifelse(ReasonID == "VOE", "Left Voluntarily", "Other Reason"))%>%
+    group_by(Previous.Discipline.Descr, Legend) %>%  dplyr::summarize(Samples = n()) %>%
+    filter(Samples >=70) %>%     drop_na()  %>%
+    ggplot(aes(x=reorder(Previous.Discipline.Descr, Samples),y=Samples, fill= Legend)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Voluntary Resignations Happen Amoung Software and Sys Engrs ",
+                subtitle = "Resigned-Other Employment Counts by Job Discipline",
+                caption = "Source: RMS")
+
+p1
+
+p1 + facet_wrap(~ Previous.Discipline.Descr, ncol=2, scales="free_y") 
+
+
+z  <- z3 %>% 
+    filter(LevelName == "Level 1" | LevelName == "Level 2") %>% 
+    filter(Previous.Discipline.Descr == "Software Engineering") %>%
+    filter(ReasonID == "VOE") %>%
+    group_by(ID, ReasonID) %>%  dplyr::summarize(Samples = n())
+
+df_z  <- z3 %>% 
+    filter(LevelName == "Level 1" | LevelName == "Level 2") %>% 
+    filter(Previous.Discipline.Descr == "Software Engineering") %>%
+    group_by(ID, ReasonID) %>%  dplyr::summarize(Samples = n())
+
+219 /sum(z$Samples) * 100
+
+# percent voluntary resignation 
+sum(z$Samples) / sum(df_z$Samples) *100
+
+```
+
+```{r}
+p1 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+           Previous.Discipline.Descr == "Systems Engineering" | Previous.Discipline.Descr == "Cyber Intelligence" |
+           Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance") %>%
+    group_by(ID, Previous.Discipline.Descr, RecordType) %>%  dplyr::summarize(Samples = n()) %>%
+    ggplot(aes(x=RecordType,y=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "The Largest Amount of Movement is within Software and Systems Engr.",
+                subtitle = "Movement w/in First Three Years by Record Type at RMS",
+                caption = "Source: RMS October 2019")
+
+p1 + facet_wrap(~ Previous.Discipline.Descr, ncol=2, scales="free_y") 
+```
+
+
+
+
+
+## Action ID
+
+```{r}
+p1 <- z3 %>% 
+    group_by(ActionID) %>%  dplyr::summarize(Counts = n()) %>%
+    ggplot(aes(x=reorder(ActionID, Counts),y=Counts)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Common Action ID in the Dataset is DTA and TER",
+                subtitle = "Action ID by Positions For the First Three Years at RMS",
+                caption = "Source: RMS Oct. 2019")
+
+p1 <- z3 %>% 
+    group_by(Previous.Discipline.Descr, ActionID) %>%  dplyr::summarize(Counts = n()) %>%
+    filter(Counts >150) %>% drop_na() %>%
+    ggplot(aes(x=reorder(Previous.Discipline.Descr, Counts),y=Counts, fill = ActionID)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Action is Amoung Software and Systems Engrs",
+                subtitle = "Action ID by Positions For the First Three Years at RMS",
+                caption = "Source: RMS Oct. 2019")
+```
+
+
+## Action ID by job discipline
+```{r}
+# | Previous.Discipline.Descr == "Cyber Intelligence" |
+#           Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance"
+
+p1 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    #filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+    #       Previous.Discipline.Descr == "Systems Engineering" ) %>%
+    filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+           Previous.Discipline.Descr == "Systems Engineering" | Previous.Discipline.Descr == "Cyber Intelligence" |
+           Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance") %>%
+    group_by(Previous.Discipline.Descr, ActionID) %>%  dplyr::summarize(Counts = n()) %>%
+    ggplot(aes(x=ActionID,y=Counts)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "More Activity is Happening at the Software and Systems Engr Jobs",
+                subtitle = "Action ID by Positions For the First Three Years at RMS",
+                caption = "Source: RMS Oct. 2019")
+
+p1 + facet_wrap(~ Previous.Discipline.Descr, ncol=2, scales="free_y") 
+
+
+```
+
+
+## Reason ID
+
+```{r}
+p1 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    #filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+    #       Previous.Discipline.Descr == "Systems Engineering" ) %>%
+    filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+           Previous.Discipline.Descr == "Systems Engineering" | Previous.Discipline.Descr == "Cyber Intelligence" |
+           Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance") %>%
+    group_by(Previous.Discipline.Descr, ReasonID) %>%  dplyr::summarize(Counts = n()) %>%
+    filter(Counts > 30) %>%
+    ggplot(aes(x=ReasonID,y=Counts)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Most Reasons IDs are from ALT Department Reason Code",
+                subtitle = "Reason ID by Positions For the First Three Years at RMS | Greater than 30 Reasons",
+                caption = "Source: RMS Oct. 2019")
+
+p1 + facet_wrap(~ Previous.Discipline.Descr, ncol=2, scales="free_y") 
+
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+
+
+## plot with reason descriptions 
+p2 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(Previous.Discipline.Descr == "Software Engineering") %>%
+    group_by(ReasonDescr, ActionID) %>%  dplyr::summarize(Samples = n()) %>%
+    filter(Samples > 10) %>%
+    #top_n(n=20, ReasonDescr) %>%
+    ggplot(aes(x= reorder(ReasonDescr, Samples),y=Samples, fill = factor(ActionID))) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    scale_color_brewer(name='',palette='Dark2') + 
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Finding/Takeaway",
+                subtitle = "Software Engineering - Reasons Description",
+                caption = "Source: RMS Oct. 2019")
+
+
+# plot with action id
+p3 <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(Previous.Discipline.Descr == "Software Engineering") %>%
+    group_by(ActionID) %>%  dplyr::summarize(Samples = n()) %>%
+    #arrange(desc(Samples)) %>%
+    top_n(n=20, ActionID) %>%
+    ggplot(aes(x= reorder(ActionID, Samples),y=Samples, fill=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='none',plot.title = element_text(size =14)) + 
+   # scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Finding/Takeaway",
+                subtitle = "Software Engineering - Action ID",
+                caption = "Source: RMS Oct. 2019")
+
+
+p2
+p3
+
+
+
+```
+
+## Software Engineering 
+```{r}
+
+software <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(Previous.Discipline.Descr == "Software Engineering") %>% 
+    group_by(Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) 
+
+sub <- software[software$Samples >= 2,] %>% filter(Discipline.Descr != "Software Engineering")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+plot(nw, edge.label = E(nw)$Samples)
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 190)
+
+```
+
+
+## Systems Engineering 
+```{r}
+
+Systems <- z3 %>% 
+    #filter(time < 600) %>% 
+    filter(Previous.Discipline.Descr == "Systems Engineering") %>% 
+    group_by(Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% drop_na()
+
+sub <- Systems[Systems$Samples >= 2,] %>% filter(Discipline.Descr != "Systems Engineering")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+plot(nw, edge.label = E(nw)$Samples)
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 11, padding = 0.2, labels = V(nw)$name, labelDistance = 100)
+
+```
+
+
+
+## "Program Management"
+
+```{r}
+
+Systems <- z3 %>% 
+    #filter(RecordType == "Termination") %>% head(20)
+    filter(Previous.Discipline.Descr == "Program Management") %>% 
+    group_by(Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) 
+
+sub <- Systems[Systems$Samples >= 2,] %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+plot(nw, edge.label = E(nw)$Samples)
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 220)
+
+```
+
+```{r}
+Systems <- z3 %>% 
+    #filter(Previous.Discipline.Descr == "Program Management") %>% 
+    #filter(Previous.Discipline.Descr == "Software Engineering") %>% 
+    filter(Previous.Discipline.Descr == "Systems Engineering") %>% 
+    group_by(Previous.LOB_Function, LOB_Function) %>%  dplyr::summarize(Samples = n()) 
+
+sub <- Systems[Systems$Samples >= 10,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*4
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, vertex.label.dist=1, vertex.size=deg*3)
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 100)
+```
+
+## Line of Business Function Movement
+```{r}
+Systems <- z3 %>% 
+    #filter(Previous.Discipline.Descr == "Program Management") %>% 
+    #filter(Previous.Discipline.Descr == "Software Engineering") %>% 
+    group_by(Previous.LOB_Function, LOB_Function) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 100,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*4
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, vertex.label.dist=1, vertex.size=deg*2)
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 100)
+```
+
+## people don't really change roles 
+```{r}
+Systems <- z3 %>% 
+    #filter(Previous.Discipline.Descr == "Program Management") %>% 
+    filter(Previous.Discipline.Descr == "Software Engineering") %>% 
+    group_by(Previous.LOB_Function, LOB_Function) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 2,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 50)
+```
+
+
+```{r}
+Systems <- z3 %>% 
+    filter(Previous.Discipline.Descr == "Program Management") %>% 
+    #filter(Previous.Discipline.Descr == "Software Engineering") %>% 
+    group_by(Previous.LOB_Function, LOB_Function) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 2,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+
+ad <- as_adjacency_matrix(nw,type="both",names=TRUE,sparse=FALSE,attr="Samples");
+V(nw)$name
+chordNetwork(Data = ad, width = 700, height = 700, fontSize = 14, padding = 0.2, labels = V(nw)$name, labelDistance = 100)
+```
+
+```{r}
+Systems <- z3 %>% 
+  filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+           Previous.Discipline.Descr == "Systems Engineering" | Previous.Discipline.Descr == "Cyber Intelligence" |
+           Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance") %>%
+    group_by(Previous.LOB_Function, LOB_Function) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 50,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+
+```
+
+
+
+
+
+```{r}
+Systems <- z3 %>% 
+  #filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Program Management" |
+  #         Previous.Discipline.Descr == "Systems Engineering" | Previous.Discipline.Descr == "Cyber Intelligence" |
+  #         Previous.Discipline.Descr == "Field Engineering" | Previous.Discipline.Descr == "Multi Functional Finance") %>%
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 50,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+```
+
+```{r}
+Systems <- z3 %>% 
+  filter(Previous.Discipline.Descr == "Systems Engineering") %>%
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 50,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+```
+
+
+```{r}
+Systems <- z3 %>% 
+  filter(Previous.Discipline.Descr == "Software Engineering") %>%
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() 
+
+sub <- Systems[Systems$Samples >= 50,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, edge.label = E(nw)$Samples, edge.arrow.size=.4, edge.curved=.1, 
+     vertex.label.dist=1, vertex.label.font=1, vertex.size=V(nw)$size*0.50) #, vertex.size=deg*2
+```
+
+## Time Insights 
+
+- Drop the negative YOS date and then visualize 
+
+```{r}
+
+
+z3_sub <- z3 %>%
+  filter(Original.Hire.YOS >= 1)
+
+z3_sub <- z3_sub %>%
+  mutate(days_of_service = difftime(EffectiveDate, Orginal.Hire.Date, units = c("days")))
+
+z3_sub$time <- as.numeric(z3_sub$days_of_service)
+
+View(z3_sub)
+
+mean(z3_sub$time)
+
+```
+
+```{r}
+z3_sub %>%   
+  filter(Previous.Discipline.Descr == "Software Engineering") %>%
+  ggplot(aes(x=days_of_service)) + geom_density()
+
+
+# level one and two software engr volunt. leaving 
+p<- z3_sub %>% filter(LevelName == "Level 1" | LevelName == "Level 2") %>% 
+  filter(Previous.Discipline.Descr == "Software Engineering" | Previous.Discipline.Descr == "Systems Engineering") %>%
+  filter(ReasonID == "VOE") %>%
+  ggplot(aes(x=time)) +
+  geom_histogram(aes(y=..density..),position="identity", alpha=0.5) +
+  geom_density(alpha=0.6)+
+  facet_wrap(~ Previous.Discipline.Descr, ncol=2, scales="free_y") 
+p
+
+
+p<- z3_sub %>% filter(LevelName == "Level 1" | LevelName == "Level 2" | LevelName == "Level 3" | LevelName == "Level 3") %>% 
+  filter(Previous.Discipline.Descr == "Software Engineering" | 
+           Previous.Discipline.Descr == "Systems Engineering" | 
+           Previous.Discipline.Descr == "Multi Functional Finance") %>%
+  filter(ReasonID == "VOE") %>% 
+  group_by(Previous.Discipline.Descr) %>%
+  summarize(mean = mean(time)) 
+
+
+library(ggridges)
+
+z3_sub %>% 
+    filter(LevelName == "Level 1" | LevelName == "Level 2") %>% 
+    filter(ReasonID == "VOE") %>% 
+    filter(Previous.Discipline.Descr == "Software Engineering" | 
+           Previous.Discipline.Descr == "Systems Engineering" | 
+           Previous.Discipline.Descr == "Multi Functional Finance") %>%
+  ggplot(aes(x = time, y = Previous.Discipline.Descr)) +
+  geom_density_ridges(aes(fill = Previous.Discipline.Descr)) +
+  scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+
+```
+
+
+## MACRO 
+
+```{r}
+### JOB ROLE Discipline changes 
+new <- z3 %>% 
+    group_by(Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% drop_na() %>%
+    mutate(same = Previous.Discipline.Descr == Discipline.Descr) %>%
+    filter(same == "FALSE")
+
+## number of job changes 
+sum(new$Samples) 
+
+
+### BA Changes 
+ba <- z3 %>% 
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() %>%
+    mutate(same = PreviousBusinessUnitName == BusinessUnitName) %>%
+    filter(same == "FALSE")
+
+sum(ba$Samples) 
+
+
+sub <- ba[ba$Samples >= 10,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+V(nw)$label.cex = 0.7
+
+#layout <-layout.fruchterman.reingold(nw)
+layout <- layout.reingold.tilford(g, circular=T)
+layout <- layout.fruchterman.reingold(nw, niter=1000000, area=170*vcount(nw)^2)
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+
+
+plot(nw, layout = layout, edge.label = E(nw)$Samples, edge.arrow.size=.2, edge.curved=.1, edge.label.font =.2, edge.label.cex = 0.5, vertex.label.dist=1, vertex.label.font=.2, vertex.size=V(nw)$size*0.75) #, vertex.size=deg*2
+
+
+```
+
+
+## high level executives in the data 
+
+```{r}
+
+high <- z3 %>% filter(LevelNumber == 7 | LevelNumber == 8)
+
+p1 <- z3 %>% filter(LevelNumber == 7) %>%
+   #filter(LevelName == "Level 3" | LevelName == "Level 4"| LevelName == "Level 1"| LevelName == "Level 2") %>% 
+  #  mutate(Legend = ifelse(ReasonID == "VOE", "Left Voluntarily", "Other Reason"))%>%
+    group_by(ReasonID) %>%  dplyr::summarize(Samples = n()) %>%
+    #filter(Samples >=70) %>%     drop_na()  %>%
+    ggplot(aes(x=reorder(ReasonID, Samples),y=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    #scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Level 7 Changes",
+                subtitle = "Movements and Changes at Level 7",
+                caption = "Source: RMS")
+
+p1
+
+p2 <- z3 %>% filter(LevelNumber == 8)%>%
+   #filter(LevelName == "Level 3" | LevelName == "Level 4"| LevelName == "Level 1"| LevelName == "Level 2") %>% 
+  #  mutate(Legend = ifelse(ReasonID == "VOE", "Left Voluntarily", "Other Reason"))%>%
+    group_by(ReasonID) %>%  dplyr::summarize(Samples = n()) %>%
+    #filter(Samples >=70) %>%     drop_na()  %>%
+    ggplot(aes(x=reorder(ReasonID, Samples),y=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Level 8 Changes",
+                subtitle = "Movements and Changes at Level 8",
+                caption = "Source: RMS")
+
+p2
+
+
+library(gridExtra)
+grid.arrange(p1,p2,ncol=2)
+
+```
+
+
+
+```{r}
+
+
+Energy <- jsonlite::fromJSON("C:/Users/e394102/OneDrive/Data/energy.json")
+sankeyNetwork(Links = Energy$links, Nodes = Energy$nodes, Source = "source",
+             Target = "target", Value = "value", NodeID = "name",
+             units = "TWh", fontSize = 12, nodeWidth = 30)
+
+```
+
+```{r}
+library(readxl)
+eight <- read_excel("C:/Users/e394102/OneDrive/Data/level8.xlsx")
+head(eight)
+
+
+nw <- eight %>% filter(EffectiveDate > "2016-01-01")%>%
+    group_by(ReasonDescr) %>%  dplyr::summarize(Samples = n()) %>% drop_na() %>%
+    ggplot(aes(x=reorder(ReasonDescr, Samples),y=Samples)) + 
+    geom_bar(stat='identity') + 
+    coord_flip() + theme_fivethirtyeight() + 
+    theme(axis.text.y=element_text(size=9)) + 
+    scale_fill_gradientn(name='',colors=colorRampPalette(c("gray","#46ACC8"))(10)) +
+    theme(legend.position='bottom',plot.title = element_text(size =14)) + 
+    #scale_fill_gradientn(name='Level Ones Hired',colors=rev(brewer.pal(10,'Spectral'))) +
+    labs(title = "Level 8 Changes in RMS During the Last 3 Years",
+                subtitle = "Movements and Changes at Level 8",
+                caption = "Source: RMS")
+
+```
+
+
+
+# Read in all movement file and filter for level 7 and 8s 
+### note this file is different as it was pulled without the persepective of the first three years at RMS so it 
+includes all movements
+### we will filter on Level 7 and 8s then filter on records after 1-1-2017
+```{r}
+library(readxl)
+## this dataset is different in that it doesn't just look at the first three years of experience 
+move <- read_excel("C:/Users/e394102/OneDrive/Data/movement_all_since2016.xlsx")
+
+
+# remove spaces and garbage in the column names
+names(move) <- make.names(names(move),unique = TRUE)
+head(move)
+
+### Filter on Level 7 and 8s then on effective date greater than or equal to 1-1-2017
+high <- move %>% filter(LevelNumber == 7 | LevelNumber == 8) %>% filter(EffectiveDate >= "2017-01-01") 
+
+
+### BA Changes 
+ba <- high %>% 
+    group_by(LevelNumber, PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() %>%
+    mutate(same = PreviousBusinessUnitName == BusinessUnitName) 
+
+ba %>% 
+  group_by(LevelNumber) %>% 
+  summarise(Frequency = sum(Samples))
+
+
+
+### look at only those who moved
+
+ba <- high %>% 
+    group_by(ID, LevelNumber, PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    #drop_na() %>%
+    mutate(sameBA = PreviousBusinessUnitName == BusinessUnitName) %>%
+    filter(sameBA == "FALSE")
+
+
+ba %>% 
+  group_by(LevelNumber) %>% 
+  summarise(Frequency = sum(Samples))
+
+
+26 /148 * 100 
+
+
+90/ 884 *100
+
+# count how many unique people are in this dataset 
+high %>% group_by(ID) %>% summarize(Samples = n()) %>% nrow()
+
+
+
+# 63 L8s in the dataset active roster 
+# 15 of those L8s have moved into a BA 
+
+15 / 63 * 100
+
+
+######PART TWO ##### 
+## pull in the active roster  and join it up to see what 
+roster <- read_excel("C:/Users/e394102/OneDrive/Data/Active_Roster.xlsx")
+
+
+# remove spaces and garbage in the column names
+names(roster) <- make.names(names(roster),unique = TRUE)
+
+head(roster)
+
+
+### level changes for level 7 to 8
+levels <- roster %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L7' | Level.Type == 'L8' ) 
+
+
+colnames(levels)[1] <- "ID"
+
+joined <- inner_join(ba, levels, by="ID")
+
+### level changes for level 7 to 8
+eights <- joined %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L8' ) 
+
+sevens <- joined %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L7' ) 
+
+
+
+
+
+
+
+
+```
+
+
+
+```{r}
+
+
+### JOB ROLE Discipline changes for everyone at high levels 
+new <- high %>% 
+    group_by(LevelNumber, Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% drop_na() %>%
+    mutate(same = Previous.Discipline.Descr == Discipline.Descr) # see who moved and who didn't 
+
+
+new %>% 
+  group_by(LevelNumber) %>% 
+  summarise(Frequency = sum(Samples))
+
+# only those who moved 
+new <- high %>% 
+    group_by(ID, LevelNumber, Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% drop_na() %>%
+    mutate(same = Previous.Discipline.Descr == Discipline.Descr) %>%
+    filter(same == "FALSE") # grab only the rows where people moved 
+
+table(new$LevelNumber)
+
+new %>% 
+  group_by(ID, LevelNumber) %>% filter(LevelNumber == 8)%>% 
+  summarise(Frequency = sum(Samples)) %>% nrow()
+
+
+
+joined <- inner_join(new, levels, by="ID")
+
+### level changes for level 7 to 8
+eights <- joined %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L8' ) %>% 
+    group_by(ID) %>% nrow()
+
+sevens <- joined %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L7' ) %>% 
+    group_by(ID) %>% nrow()
+
+
+
+eights %>% group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+
+
+
+
+
+
+
+# filter and count the number of people who left for voluntary reasons at level 7 and 8
+vol_term <- high %>% filter(ReasonID == "VOE") 
+
+# view total Alt. Department changes
+table(high$Alt.Dept.Change)
+
+### double check alt dept changes 
+# only those who moved 
+new <- high %>% 
+    #group_by(Previous.Alt.Dept.ID, Alt.Dept.ID) %>%  dplyr::summarize(Samples = n()) %>% #drop_na() %>%
+    mutate(same = Previous.Alt.Dept.ID == Alt.Dept.ID) #%>%
+    #filter(same == "FALSE") # grab only the rows where change happened 
+
+new$alchange <- new$Alt.Dept.Change
+
+# here we see there are some NAs in the Alt. Dept codes 
+summary(new)
+
+x <- new %>% 
+  #group_by(LevelNumber) %>% 
+  summarise(Frequency = sum(Samples)) 
+
+sum(x$Frequency)
+
+
+```
+
+### Business Unit Movements for Level 8 and 7
+```{r}
+
+library(igraph)
+### BA Changes 
+ba <- high %>% 
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() %>%
+    mutate(same = PreviousBusinessUnitName == BusinessUnitName) %>%
+    filter(same == "FALSE")
+
+sum(ba$Samples) 
+
+
+sub <- ba[ba$Samples >= 1,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+V(nw)$label.cex = 0.7
+
+#layout <-layout.fruchterman.reingold(nw)
+#layout <- layout.reingold.tilford(g, circular=T)
+#layout <- layout.fruchterman.reingold(nw, niter=1000000, area=170*vcount(nw)^2)
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+layout <- layout_as_star(nw, center = V(nw)[1], order = NULL)
+
+
+
+plot(nw, layout = layout, edge.label = E(nw)$Samples, edge.arrow.size=.2, edge.curved=.1, edge.label.font =.2, edge.label.cex = 0.5, vertex.label.dist=1, vertex.label.font=.2, vertex.size=V(nw)$size*0.75) #, vertex.size=deg*2
+```
+
+
+
+```{r}
+
+
+library(igraph)
+### BA Changes 
+ba <- high %>% filter(LevelNumber == 8) %>%
+    group_by(Previous.Discipline.Descr, Discipline.Descr) %>%  dplyr::summarize(Samples = n()) %>% 
+    drop_na() %>%
+    mutate(same = Previous.Discipline.Descr == Discipline.Descr) %>%
+    filter(same == "FALSE")
+
+sum(ba$Samples) 
+
+
+sub <- ba[ba$Samples >= 1,]  # %>% filter(Discipline.Descr != "Program Management")
+
+met <- sub[c(1,2,3)]
+nw <- graph.data.frame(met, directed=TRUE)
+
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(nw, mode="all")
+V(nw)$size <- deg*2
+V(nw)$label.cex = 0.7
+
+#layout <-layout.fruchterman.reingold(nw)
+#layout <- layout.reingold.tilford(g, circular=T)
+layout <- layout.fruchterman.reingold(nw, niter=1000000, area=170*vcount(nw)^2)
+# We could also use the audience size value:
+#V(nw)$size <- V(nw)$Samples*2
+layout <- layout_as_tree(nw)
+layout <- layout_as_star(nw, center = V(nw)[1], order = NULL)
+
+
+plot(nw, layout = layout, edge.label = E(nw)$Samples, edge.arrow.size=.2, edge.curved=.1, edge.label.font =.2, edge.label.cex = 0.5, vertex.label.dist=1, vertex.label.font=.2, vertex.size=V(nw)$size*0.75) #, vertex.size=deg*2
+```
+
+
+
+##This Section Looks at Level Changes for Top Level Employees 
+### Note we needed to pull a new dataset for this information 
+
+```{r}
+
+
+#Dataset Pulls from Webfocus.  Bottom SQL Code as Follows
+####SQL CODE####
+# LARGE CODE CHUNK IS ABSENT####
+
+#LEFT JOIN JOB_RPT AS PreviousJob ON PreviousJob.EMPLID = J.EMPLID AND PreviousJob.SEQNO = J.SEQNO - 1 AND #PreviousJob.ACTION NOT IN ('HIR','REH') AND PreviousJob.JOBCODE <> 'XXXX'
+#
+#
+#  WHERE 
+#	OC.OPERATING_CMPT_LM LIKE 'MST%'
+#	AND J.JOB_LEVEL_LM <> PreviousJob.JOB_LEVEL_LM
+#	AND J.EMPL_STATUS IN ('A','L','P','S')
+#	AND (J.EFFDT BETWEEN '20170101' AND '20191001')
+####END SQL CODE######
+
+library(readxl)
+library(dplyr)
+levelchange <- read_excel("C:/Users/e394102/OneDrive/Data/LevelChange_2017_Oct2019.xlsx")
+head(levelchange)
+
+
+# remove spaces and garbage in the column names
+names(levelchange) <- make.names(names(levelchange),unique = TRUE)
+
+head(levelchange)
+
+
+
+### level changes for level 7 to 8
+new <- levelchange %>% 
+    filter(PreviousLevelType != "NEX")%>%
+    filter(PreviousLevelNumber == 7 | PreviousLevelNumber == 8)%>% 
+    group_by(LevelNumber, PreviousLevelNumber) %>%  dplyr::summarize(Samples = n()) %>% #drop_na() %>%
+    mutate(same = PreviousLevelNumber == LevelNumber) 
+
+# we see 19 people moved from level 7 to 8  from the avove script 
+
+# now let's get the total of level 8's in the dataset.  
+new <- levelchange %>% 
+    filter(PreviousLevelType != "NEX")%>%
+    filter(LevelNumber == 8) %>% 
+    group_by(LevelNumber) %>%  dplyr::summarize(Samples = n())
+
+
+
+### level changes for level 6 to 7
+new <- levelchange %>% 
+    filter(PreviousLevelType != "NEX")%>%
+    filter(PreviousLevelNumber == 7 | PreviousLevelNumber == 6)%>% 
+    group_by(LevelNumber, PreviousLevelNumber) %>%  dplyr::summarize(Samples = n()) %>% #drop_na() %>%
+    mutate(same = PreviousLevelNumber == LevelNumber) 
+
+
+
+```
+
+## now let's filter the data for only after 2017 and do some summary counts of the change 
+- look at ALT dept changes 
+- look at OC change 
+- Use the original dataset from the top and just filter by date
+```{r}
+z_data <-  z3 %>% filter(EffectiveDate > "2017-01-01") 
+
+# write.csv(z_data, file = "z_data.csv")
+# count the number of distinct people in the data 
+z_data %>% filter(EffectiveDate > "2017-01-01") %>%
+  group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+
+z_data %>% filter(EffectiveDate > "2017-01-01") %>% 
+  filter(LevelNumber == 7 | LevelNumber == 8)%>% 
+  group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+# each row represents a unique job movement change
+nrow(z_data)
+
+
+
+### BA Changes 
+ba <- z_data %>% 
+    group_by(PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    #drop_na() %>%
+    mutate(same = PreviousBusinessUnitName == BusinessUnitName) %>%
+    filter(same == "FALSE")
+
+# look at total transfters in From another BA 
+
+sum(ba$Samples)
+
+
+### discipline Changes 
+ba <- z_data %>% 
+    group_by(Discipline.Code, Previous.Discipline.Code) %>%  dplyr::summarize(Samples = n()) %>% 
+    #drop_na() %>%
+    mutate(same = Previous.Discipline.Code == Discipline.Code) %>%
+    filter(same == "FALSE")
+
+# look at total job code changes 
+
+sum(ba$Samples)
+
+
+### left voluntarily  
+z_data %>% 
+    filter(ReasonID == "VOE") %>% nrow()
+
+# look at total job code changes 
+
+sum(ba$Samples)
+
+
+
+## grab Alt Dept Changes 
+table(z_data$Alt.Dept.Change)
+
+
+
+
+```
+
+
+
+
+```{r}
+
+
+roster <- read_excel("C:/Users/e394102/OneDrive/Data/Active_Roster.xlsx")
+
+
+
+# remove spaces and garbage in the column names
+names(roster) <- make.names(names(roster),unique = TRUE)
+
+head(roster)
+
+
+### level changes for level 7 to 8
+levels <- roster %>% 
+    #filter('FLSA Status' != "NEX")%>%
+    filter(Level.Type == 'L7' | Level.Type == 'L8' ) 
+
+
+colnames(levels)[1] <- "ID"
+
+joined <- inner_join(levelchange, levels, by="ID")
+
+
+
+
+
+### level changes for level 7 to 8
+new <- levelchange %>% 
+    filter(PreviousLevelType != "NEX")%>%
+    filter(PreviousLevelNumber == 7 | PreviousLevelNumber == 6 ) %>% 
+    group_by(LevelNumber, PreviousLevelNumber) %>%  dplyr::summarize(Samples = n())
+
+
+joined %>% #filter(EffectiveDate > "2017-01-01") %>% 
+  #filter(LevelNumber == 7 | LevelNumber == 8)%>% 
+  group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+```
+
+
+### see job discipline changes by level 
+```{r}
+## use gerry's data and filter by year
+z_data <-  z3 %>% filter(EffectiveDate > "2017-01-01") 
+
+# write.csv(z_data, file = "z_data.csv")
+# count the number of distinct people in the data 
+z_data %>% filter(EffectiveDate > "2017-01-01") %>%
+  group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+
+high <- z3 %>% filter(EffectiveDate > "2017-01-01") %>% 
+  filter(LevelNumber == 7 | LevelNumber == 8)
+  #group_by(ID) %>%  summarize(Samples = n()) %>% nrow()
+
+# each row represents a unique job movement change
+nrow(z_data)
+
+
+
+### BA Changes 
+ba <- z_data %>% 
+    group_by(LevelNumber, ID, PreviousBusinessUnitName, BusinessUnitName) %>%  dplyr::summarize(Samples = n()) %>% 
+    #drop_na() %>%
+    mutate(same = PreviousBusinessUnitName == BusinessUnitName) %>%
+    filter(same == "FALSE")
+
+sum(ba$Samples)
+
+
+```
+
+
+
+

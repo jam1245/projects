@@ -1,5 +1,8 @@
 library(shiny)
 library(datasets)
+library(plotly)
+library(lubridate)
+library(tidyverse)
 
 ui <- shinyUI(fluidPage(
     titlePanel("Column Plot"),
@@ -45,7 +48,7 @@ ui <- shinyUI(fluidPage(
                          
                      ),
                      mainPanel(
-                         plotOutput('MyPlot')
+                         plotlyOutput('MyPlot')
                      )
                  )
         )
@@ -66,7 +69,11 @@ server <- shinyServer(function(input, output, session) {
         # tested with a following dataset: write.csv(mtcars, "mtcars.csv")
         # and                              write.csv(iris, "iris.csv")
         df <- read.csv(inFile$datapath, header = input$header, sep = input$sep,
-                       quote = input$quote)
+                       quote = input$quote) %>%
+            mutate(date = lubridate::mdy(date))
+        
+        
+        
         
         
         # Update inputs (you could create an observer with both updateSel...)
@@ -83,10 +90,10 @@ server <- shinyServer(function(input, output, session) {
     })
     
     output$contents <- renderTable({
-        data()
+        data() 
     })
     
-    output$MyPlot <- renderPlot({
+    output$MyPlot <- renderPlotly({
         # for a histogram: remove the second variable (it has to be numeric as well):
         # x    <- data()[, c(input$xcol, input$ycol)]
         # bins <- nrow(data())
@@ -99,8 +106,15 @@ server <- shinyServer(function(input, output, session) {
         
         
         # I Since you have two inputs I decided to make a scatterplot
-        x <- data()[, c(input$xcol, input$ycol)]
-        plot(x)
+        #x <- data()[, c(input$xcol, input$ycol)]
+        x <- data()[, c(input$xcol)]
+        y <- data()[, c(input$ycol)]
+        #plot(x)
+        #data() %>% plot_time_series(.date_var = input$xcol, .value = input$ycol)
+        
+        fig <- plot_ly(x = ~x, y = ~y, mode = 'lines', text = paste("time series"))
+        
+        fig
         
     })
 })

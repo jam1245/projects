@@ -50,7 +50,7 @@ shinyServer(function(input, output) {
     
     temp <- mySeries_raw()
     
-    myts <- ts(temp[,2:2], start = c(year_tbl$year, year_tbl$month), frequency = 12)
+  #  myts <- ts(temp[,2:2], start = c(year_tbl$year, year_tbl$month), frequency = 12)
     
     
     
